@@ -337,6 +337,36 @@ runtime with `400` and `Value for required parameter '<name>' not found`. A
 required entry (Slack's `send_message_to_channel_v2` requires `send_as`), so
 check it per activity rather than assuming.
 
+### A `Reference` entry takes a looked-up value, never the display name
+
+A `Parameters` or `RequestFields` entry that carries `Reference` takes the
+`LookupValue` field of the row whose `LookupNames` match the user's value. Slack
+`ConversationsInfo_GET` parameter `conversationsInfoId` carries
+`{"ObjectName": "curated_channels", "LookupNames": ["name", "id"], "LookupValue": "id"}`:
+the value is the channel id (`C0123ABCDEF`), not `<channel-name>`. A name
+passes `validate` and faults at runtime (`channel_not_found`).
+
+List `Reference.ObjectName` itself, not a sibling object such as
+`conversations`, on the connection the node binds:
+
+```bash
+uip is resources run list uipath-salesforce-slack "curated_channels?types=public_channel,private_channel" --connection-id <id> --output json
+```
+
+- A nonzero exit or a `Result` other than `Success` is a lookup failure, not an
+  empty result.
+- Match keys inside `Data` case-insensitively (`items`, `Pagination`,
+  `HasMore`, `NextPageToken`).
+- While `HasMore` is true, re-run with `--query "nextPage=<NextPageToken>"`.
+  `pageToken=`, `page=`, and `name=` are ignored and return page 1 again. Stop
+  at the first match, or when a page adds no rows you have not already seen.
+
+No match on that connection: repeat on every other `Enabled` connection from
+`uip is connections list <connector-key> --all-folders --output json` and bind
+the one that holds it. The `IsDefault` connection can reach a workspace
+without the value. No connection holds it, or a lookup fails: stop and report
+that field. Never write the display name in its place.
+
 ## 4. Bindings — from `bindingInfo`, never invented
 
 A node that targets a cloud resource carries a binding. The `bindingInfo` on the
