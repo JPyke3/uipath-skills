@@ -14,6 +14,12 @@ make from syntax alone. Exact signatures remain in the generated API.
   Declared at process level it ends the whole run on the first failure; declared inside a multi-instance sub-process it ends only that iteration.
   Place `.eventSubProcess()` in the scope whose failure it should absorb.
 
+<!-- RULE:bpmn.event.error-context -->
+- The engine surfaces a failed element's error under the capital-`Error` key with lowercase fields (`code`, `message`, `detail`, `category`, `status`, `traceId`, `response`, `element`).
+  `.eventSubProcess({ error: true })` captures it on its start event by default, into `vars.<net>_Error` — a per-net id, which is how the designer names one: every error capture in the measured exports has a unique id with the display name `Error`, and the bare `vars.Error` appears in none. So a net called `failures` reads `vars.failures_Error.<field>` with nothing more written; `errorVar` names it something else and `errorVar: false` omits the capture.
+  The platform validator needs the declaration: a `vars.<id>` read with no captured variable is `VARIABLE_DOES_NOT_EXIST`, in a net or anywhere else. Note the runtime resolves `vars.<id>` in ONE flat scope whatever a declaration's `elementId` says, so two captures cannot share an id — that is why the default is per-net.
+  A boundary handler captures nothing by default; there `errorVar` is what makes the error readable.
+
 <!-- RULE:bpmn.event.non-interrupting-path -->
 - A non-interrupting boundary handler runs beside a token that still reaches the next step, so its path must end on its own; rejoining the main path would run everything after it twice.
   The builder refuses a non-interrupting handler path left open.
@@ -75,6 +81,10 @@ make from syntax alone. Exact signatures remain in the generated API.
 - For a targeted edit, decompile the original, compile a baseline before editing,
   compile the edit, then merge with `--baseline`. A bare recompile rewrites
   untouched elements and drops original layout.
+
+<!-- RULE:bpmn.brownfield.nested-style -->
+- `bpmn decompile --style nested` lifts an import's boundary events, gateways and event sub-processes into the nesting constructs only where the lifted source builds the very same graph, and prints why each region it left flat stayed flat.
+  A flow id that is not `Flow_<source>_<target>` keeps its region flat; the graph, its ids and `merge` are unaffected either way, so the choice is about the source you read and edit, not the artifact.
 
 <!-- RULE:bpmn.brownfield.format -->
 - Format after adding elements that need diagram shapes. Avoid formatting a

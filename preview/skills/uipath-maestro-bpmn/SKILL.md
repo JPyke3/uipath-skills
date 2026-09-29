@@ -24,8 +24,9 @@ need, then let TypeScript and `bpmn check` provide the detailed contract.
 2. Keep `<Name>.bpmn.ts` at the workspace root, beside `package.json`.
 3. Import from `@uipath/maestro-builder-sdk/bpmn` and default-export a chain ending in `.build()`.
 4. Seed the source by decompiling the stub `bpmn init` wrote —
-   `uip maestro bpmn decompile <Name>/<Name>.bpmn -o <Name>.bpmn.ts` — rather than
-   hand-writing the skeleton. It carries the process id and the `entryPointId` UUID the
+   `uip maestro bpmn decompile <Name>/<Name>.bpmn -o <Name>.bpmn.ts --style nested` — rather than
+   hand-writing the skeleton.
+   `--style nested` lifts an existing process's boundary events, gateways and event sub-processes into the nesting constructs wherever the graph is provably the same, and leaves the rest flat with a printed reason; without it the whole process is written flat. It carries the process id and the `entryPointId` UUID the
    product assigned, which a hand-written chain cannot invent. An existing project needs
    no `init`: seed from the `.bpmn` already there. For shape, copy the closest staged
    `examples/*.bpmn.ts`.
@@ -73,23 +74,27 @@ import { bpmn } from '@uipath/maestro-builder-sdk/bpmn';
 
 export default bpmn('notify')
   .name('Notify')
+  .flowMode('sequence')
+  .var('status', 'string')
   .startEvent('start')
   .task('record', { set: { status: 'ready' } })
   .endEvent('done')
-  .sequenceFlow('start', 'record')
-  .sequenceFlow('record', 'done')
   .build();
 ```
+
+In sequence mode each element continues to the next, so a process written top to bottom has no `.sequenceFlow()`; branch with `.choose()`, attach handlers in an activity's body, and read `bpmn check --graph` to see the wiring that resulted.
+The explicit form — `.sequenceFlow('start', 'record')` after the elements, in the default mode — is what `bpmn decompile` writes for an import unless `--style nested` lifts it, and both forms mix freely.
 
 ## Structure by nesting
 
 Where a relationship can be written by nesting, write it that way instead of by id.
 Each form lowers to the same elements and flows the explicit methods produce, and the explicit `.sequenceFlow()` still works anywhere, mixed freely.
-`examples/InvoiceEscalation.bpmn.ts` is a full process written this way; `examples/InvoiceApproval.bpmn.ts` is the same kind of process as a decompiled import, written flat, which is what a brownfield edit starts from.
+`examples/InvoiceEscalation.bpmn.ts` is a full process written this way, with no `.sequenceFlow()` at all; `examples/InvoiceApproval.bpmn.ts` is the same kind of process as a decompiled import, written flat, which is what a brownfield edit starts from — `bpmn decompile --style nested` lifts as much of such a file into this form as its flow ids allow.
 
 ```ts
 export default bpmn('approval')
   .var('action', 'string')
+  .var('outcome', 'string', { default: 'RUNNING' })
   .startEvent('start')
   .humanTask('approve', { app: 'InvoiceApproval', actions: ['Approve', 'Reject'] }, (t) => {
     t.onTimer('PT1H', { interrupting: false }, (b) => b.task('remind').endEvent('reminded'));
@@ -102,8 +107,8 @@ export default bpmn('approval')
   .endEvent('done')
   .sequenceFlow('start', 'approve')
   .sequenceFlow('approve', 'approved')
-  .eventSubProcess('failures', { error: true, errorVar: 'unhandled' }, (h) =>
-    h.task('record').endEvent('recorded', { name: 'Failure recorded' }))
+  .eventSubProcess('failures', { error: true }, (h) =>
+    h.task('record', { set: { outcome: '=js:"FAILED: " + vars.failures_Error.message' } }).endEvent('recorded', { name: 'Failure recorded' }))
   .build();
 ```
 
@@ -114,7 +119,8 @@ export default bpmn('approval')
 - Inside an arm or a handler, consecutive elements are wired in order; branch there with `choose` / `fork` / `race`, not a bare gateway, and jump elsewhere with `.goto(id)`.
 - An event sub-process guards the whole container it sits in, catching what nothing closer caught; a boundary handler guards one activity.
   To fail one iteration rather than the whole run, put the `eventSubProcess` inside the multi-instance sub-process.
-  `errorVar` names the variable the caught error lands in; read it as `=vars.<errorVar>.code` and `.message`.
+  An error net captures the caught error on its start by default, into `vars.<net>_Error` — so `.eventSubProcess('failures', …)` gives you `vars.failures_Error`, and you classify on `.code` / `.message` / `.detail` / `.status` with nothing more written. That per-net id is what the designer writes: over the real exports measured, every error capture carries a unique id with the display name `Error`, and the bare `vars.Error` appears in none of them. The `Error` spelling that IS fixed is the capture row's `source="=Error"`, the key the engine seeds the payload under, which the SDK writes for you. `errorVar` names the variable something else; `errorVar: false` omits the capture.
+  A boundary handler captures nothing by default; there `errorVar` is what makes the error readable, as `=vars.<errorVar>.code`.
 - `check` warns `NO_DEFAULT_FLOW` on an exclusive gateway whose every flow is conditioned; give it an `otherwise` arm or a default.
 - `.flowMode('sequence')`, called before the first element, wires consecutive elements of that scope in order, so a process written top to bottom needs no `.sequenceFlow()` at all; a `.subProcess()` body inherits it and may set its own.
   An element that already has an explicit outgoing flow is not also wired to the next one, a bare gateway is wired into but implies no outgoing flows, and an element nothing leads into or a path that does not end is refused at build.
