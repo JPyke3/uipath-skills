@@ -10,9 +10,15 @@
  * to recover from — it moves on without the guidance the skill meant it to
  * have. This check is what keeps that from drifting back in.
  *
- * Scope: `skills/` (canonical) and `skill-flavors/` (sparse overrides).
- * Flavor files mirror canonical paths, so a flavor link is resolved against
- * its canonical location as well — that is where it will sit once composed.
+ * Scope: `skills/` (canonical), `skill-flavors/` (sparse overrides) and
+ * `classic/skills/` (retained trees a flavor pins). Flavor and classic files
+ * mirror canonical paths, so their links are resolved from their canonical
+ * location as well — that is where they will sit once composed.
+ *
+ * A pinned skill (`skill-flavors/<flavor>/<skill>/.canonical`) is composed
+ * from `classic/skills/<skill>` in that flavor and from `skills/<skill>`
+ * everywhere else. So a link into it from another skill must land in BOTH
+ * trees: the default package reads one, the pinning flavor the other.
  *
  * Ignored, because none of them address a file in the tree: absolute URLs,
  * mailto/anchor-only targets, and code-fenced text.
@@ -21,11 +27,59 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+    CANONICAL_PIN_FILENAME,
+    CANONICAL_PIN_VALUE,
+    CLASSIC_DIRNAME,
+    FLAVORS_DIRNAME,
+    parseMarkerBlocks,
+} from "./compose-skill-flavor.mjs";
+
 /** The repo, or the fixture tree a test names as the first argument. */
 const REPO_ROOT = process.argv[2]
     ? path.resolve(process.argv[2])
     : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const ROOTS = ["skills", "skill-flavors"];
+const ROOTS = ["skills", FLAVORS_DIRNAME, `${CLASSIC_DIRNAME}/skills`];
+const CLASSIC_SKILLS = path.join(REPO_ROOT, CLASSIC_DIRNAME, "skills");
+
+/**
+ * flavor name -> set of skills that flavor composes from `classic/skills/`.
+ * A malformed pin counts as no pin here; `skills:validate` rejects it.
+ */
+async function readPins() {
+    const pins = new Map();
+    const flavorsRoot = path.join(REPO_ROOT, FLAVORS_DIRNAME);
+    let flavors = [];
+    try {
+        flavors = await readdir(flavorsRoot, { withFileTypes: true });
+    } catch {
+        return pins;
+    }
+    for (const flavor of flavors) {
+        if (!flavor.isDirectory()) continue;
+        const pinned = new Set();
+        let skills = [];
+        try {
+            skills = await readdir(path.join(flavorsRoot, flavor.name), { withFileTypes: true });
+        } catch {
+            continue;
+        }
+        for (const skill of skills) {
+            if (!skill.isDirectory()) continue;
+            const pin = path.join(flavorsRoot, flavor.name, skill.name, CANONICAL_PIN_FILENAME);
+            try {
+                if ((await readFile(pin, "utf8")).trim() === CANONICAL_PIN_VALUE) pinned.add(skill.name);
+            } catch {
+                // no pin
+            }
+        }
+        pins.set(flavor.name, pinned);
+    }
+    return pins;
+}
+
+const PINS = await readPins();
+const ALL_PINNED = new Set([...PINS.values()].flatMap((set) => [...set]));
 
 /**
  * `[text](target)`, skipping images (`![alt](src)`).
@@ -118,8 +172,8 @@ function proseLines(text) {
 }
 
 /**
- * Where a link from `fromFile` should resolve. A flavor file mirrors a
- * canonical path, so it resolves as if it sat in `skills/`.
+ * Where a link from `fromFile` should resolve. A flavor or classic file mirrors
+ * a canonical path, so it resolves as if it sat in `skills/`.
  */
 function resolveBaseDir(fromFile) {
     const rel = path.relative(REPO_ROOT, fromFile);
@@ -127,7 +181,93 @@ function resolveBaseDir(fromFile) {
     if (parts[0] === "skill-flavors" && parts.length > 2) {
         return path.dirname(path.join(REPO_ROOT, "skills", ...parts.slice(2)));
     }
+    if (parts[0] === "classic" && parts[1] === "skills" && parts.length > 3) {
+        return path.dirname(path.join(REPO_ROOT, "skills", ...parts.slice(2)));
+    }
     return path.dirname(fromFile);
+}
+
+/** The skill a file belongs to once composed, or null outside a skill. */
+function composedSkill(fromFile) {
+    const parts = path.relative(REPO_ROOT, fromFile).split(path.sep);
+    if (parts[0] === "skills") return parts[1] ?? null;
+    if (parts[0] === "skill-flavors") return parts[2] ?? null;
+    if (parts[0] === "classic" && parts[1] === "skills") return parts[2] ?? null;
+    return null;
+}
+
+/** Names of the flavor blocks a flavor's override of `relative` replaces. */
+const overrideCache = new Map();
+async function overriddenBlocks(flavor, relative) {
+    const key = `${flavor}\0${relative}`;
+    if (overrideCache.has(key)) return overrideCache.get(key);
+    let names = new Set();
+    try {
+        const file = path.join(REPO_ROOT, FLAVORS_DIRNAME, flavor, relative);
+        names = new Set(parseMarkerBlocks(file, await readFile(file, "utf8")).map((b) => b.name));
+    } catch {
+        // no override file
+    }
+    overrideCache.set(key, names);
+    return names;
+}
+
+/**
+ * The on-disk files a link resolved at `logical` (a `skills/...` path) must
+ * exist as, seen from `fromFile`. Each entry is `[path, label]`; the label
+ * names the composition that needs it when there is more than one.
+ *
+ * `block` is the canonical flavor block the link sits in, if any. A pinning
+ * flavor that overrides that block never composes the link, so the classic
+ * tree is not asked for it — that is how a canonical passage points at the
+ * current generation while the flavor's override keeps the classic pointer.
+ */
+async function physicalTargets(fromFile, logical, block = null) {
+    const rel = path.relative(REPO_ROOT, logical);
+    const parts = rel.split(path.sep);
+    if (parts[0] !== "skills" || parts.length < 2 || !ALL_PINNED.has(parts[1])) {
+        return [[logical, null]];
+    }
+    const target = parts[1];
+    const classic = path.join(CLASSIC_SKILLS, ...parts.slice(1));
+    const fromParts = path.relative(REPO_ROOT, fromFile).split(path.sep);
+    if (fromParts[0] === "classic") return [[classic, null]];
+    if (fromParts[0] === "skill-flavors") {
+        return PINS.get(fromParts[1])?.has(target) ? [[classic, null]] : [[logical, null]];
+    }
+    // Canonical: the skill's own links stay in its own tree; a link from any
+    // other skill is composed next to both generations.
+    if (composedSkill(fromFile) === target) return [[logical, null]];
+    const relative = path.relative(path.join(REPO_ROOT, "skills"), fromFile);
+    const flavors = [];
+    for (const [name, set] of PINS) {
+        if (!set.has(target)) continue;
+        if (block && (await overriddenBlocks(name, relative)).has(block)) continue;
+        flavors.push(name);
+    }
+    if (flavors.length === 0) return [[logical, null]];
+    return [
+        [logical, "default package"],
+        [classic, `classic tree the ${flavors.join(", ")} flavor(s) compose`],
+    ];
+}
+
+/** Line number (1-based) -> name of the canonical flavor block around it. */
+function blockLines(file, text) {
+    const byLine = new Map();
+    const starts = [];
+    let offset = 0;
+    const lineStarts = text.split("\n").map((line) => {
+        const at = offset;
+        offset += line.length + 1;
+        return at;
+    });
+    for (const b of parseMarkerBlocks(file, text)) starts.push(b);
+    lineStarts.forEach((at, index) => {
+        const hit = starts.find((b) => at >= b.start && at < b.end);
+        if (hit) byLine.set(index + 1, hit.name);
+    });
+    return byLine;
 }
 
 function decodeOrNull(uri) {
@@ -184,7 +324,9 @@ for (const root of ROOTS) {
         const enforced = FRAGMENT_ENFORCED.some(
             (p) => rel === p || rel.startsWith(p + path.sep),
         );
+        const blocks = root === "skills" ? blockLines(file, text) : new Map();
         for (const [lineNo, line] of proseLines(text)) {
+            const block = blocks.get(lineNo) ?? null;
             for (const match of line.matchAll(LINK_RE)) {
                 const raw = match[1];
                 if (isExternal(raw)) continue;
@@ -206,12 +348,17 @@ for (const root of ROOTS) {
                 const inRepo =
                     resolved === REPO_ROOT ||
                     resolved.startsWith(REPO_ROOT + path.sep);
-                if (!inRepo || !(await exists(resolved))) {
+                if (!inRepo) {
+                    broken.push({ file: rel, line: lineNo, target: raw, why: "escapes the repo root" });
+                    continue;
+                }
+                for (const [physical, label] of await physicalTargets(file, resolved, block)) {
+                    if (await exists(physical)) continue;
                     broken.push({
-                        file: path.relative(REPO_ROOT, file),
+                        file: rel,
                         line: lineNo,
                         target: raw,
-                        why: inRepo ? "no such file" : "escapes the repo root",
+                        why: label ? `no such file in the ${label}` : "no such file",
                     });
                 }
             }
@@ -234,16 +381,20 @@ for (const root of ROOTS) {
                 if (!fragment) continue;
                 const targetFile =
                     targetPart === "" ? file : path.resolve(baseDir, targetPart);
-                // A missing target is already reported above as a broken link.
-                if (!(await isFile(targetFile))) continue;
-                fragmentsChecked++;
-                if ((await anchorsOf(targetFile)).has(fragment.toLowerCase())) continue;
-                deadAnchors.push({
-                    file: rel,
-                    line: lineNo,
-                    target: raw,
-                    enforced,
-                });
+                // Every tree the link is composed against must carry the
+                // heading, not just the canonical one.
+                for (const [physical, label] of await physicalTargets(file, targetFile, block)) {
+                    // A missing target is already reported above as a broken link.
+                    if (!(await isFile(physical))) continue;
+                    fragmentsChecked++;
+                    if ((await anchorsOf(physical)).has(fragment.toLowerCase())) continue;
+                    deadAnchors.push({
+                        file: rel,
+                        line: lineNo,
+                        target: label ? `${raw} (in the ${label})` : raw,
+                        enforced,
+                    });
+                }
             }
         }
     }
