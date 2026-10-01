@@ -403,9 +403,15 @@ block. Each `<uipath:binding>` carries `id`, `resource`, `propertyAttribute`, an
 `default` value (the resolved key or id). On a **connection** binding
 `resourceKey` is required too — omitting it fails `validate` with
 `Integration Service activity connection binding "<id>" is missing
-resourceKey`. A `BusinessRule` binding carries the rule key as `resourceKey`.
-Other binding kinds (`process`, `queue`) carry no `resourceKey`; do not invent
-one.
+resourceKey`. `process` and `queue` bindings carry `resourceKey` from
+`bindingInfo.resourceKeyPattern`. All three `BusinessRule` bindings carry the
+same `resourceKey`, the rule key:
+
+```xml
+<uipath:binding id="Binding_RuleKey"    name="BusinessRule" type="string" resource="BusinessRule" propertyAttribute="Key"        resourceKey="<RULE_KEY>" default="<RULE_KEY>" />
+<uipath:binding id="Binding_RuleName"   name="name"         type="string" resource="BusinessRule" propertyAttribute="name"       resourceKey="<RULE_KEY>" default="<RULE_NAME>" />
+<uipath:binding id="Binding_RuleFolder" name="folderPath"   type="string" resource="BusinessRule" propertyAttribute="folderPath" resourceKey="<RULE_KEY>" default="" />
+```
 
 Every `Intsvc.ActivityExecution` bound to a connection needs TWO bindings that share one
 `resourceKey` (the connection id) and differ in `propertyAttribute`: the
@@ -488,8 +494,8 @@ the template's second bug.** Verified end-to-end for
    `bindingInfo` already documents (see [§4
    Bindings](#4-bindings--from-bindinginfo-never-invented) above): a
    process-kind `<uipath:binding resource="process" propertyAttribute="Key"
-   default="<resolved-key>" />`, referenced from the context as
-   `=bindings.<id>`. Resolve `<resolved-key>` from `uip or processes list
+   resourceKey="<RELEASE_KEY>" default="<RELEASE_KEY>" />`, referenced from the context as
+   `=bindings.<id>`. Resolve `<RELEASE_KEY>` from `uip or processes list
    --folder-path <path> --output json` → the deployed resource's
    `Key` — never leave the template's `{releaseKey}` placeholder unresolved.
 2. **The template's `folderId` context field is misnamed — the runtime reads
