@@ -209,10 +209,10 @@ For registry-evidence-only tasks, follow the command-first recipe in
    rank them. Do not call `registry get` for structural
    gaps the registry never owns: sequence flows, gateways, events, boundary
    events, multi-instance/loop markers, `errorMapping`/retry structure, or
-   diagrams. If a registry template's BPMN host tag is PascalCase (for example
-   `<bpmn:SendTask>` or `<bpmn:ReceiveTask>`), normalize the host tag to the
-   serializer's lower-camel BPMN element (`<bpmn:sendTask>`,
-   `<bpmn:receiveTask>`) while preserving the `uipath:*` payload exactly.
+   diagrams. On every `bpmn:` tag you paste, opening and closing, lowercase
+   the first letter after `bpmn:`: `<bpmn:UserTask>` → `<bpmn:userTask>`,
+   `<bpmn:ServiceTask>` → `<bpmn:serviceTask>`. Preserve the `uipath:*`
+   payload exactly.
    `BPMN.ScriptTask` is the registry lookup key, but a new node serializes
    `<uipath:type value="BPMN.Variables" version="v1" />` — never the lookup
    key. Local validation accepts the older discriminator, so a clean
@@ -387,13 +387,18 @@ For registry-evidence-only tasks, follow the command-first recipe in
    event-object checks) offline, plus deploy-readiness checks:
 
    ```bash
-   python3 -c "import sys, xml.etree.ElementTree as ET; ET.parse(sys.argv[1])" <file.bpmn>
-   uip maestro bpmn validate <file.bpmn> --output json
+   python3 -c "import sys, xml.etree.ElementTree as ET; ET.parse(sys.argv[1])" <file.bpmn> &&
+     ! grep -nE '</?bpmn:[A-Z]' <file.bpmn> &&
+     uip maestro bpmn validate <file.bpmn> --output json
    ```
 
-   Exit 0 = valid; exit 1 = validation failed. Read severity from each issue's
-   `[error]`/`[warning]` tag, not from the `Found N error(s)` header, which
-   counts errors while the list under it prints warnings too. Fix only
+   `validate` ignores tag case; a line the `grep` prints is a tag to lowercase
+   (step 2).
+
+   Exit 0 = valid. Exit 1 = a parse error, a `grep` hit, or a `validate`
+   failure. Read severity from each issue's `[error]`/`[warning]` tag, not
+   from the `Found N error(s)` header, which counts errors while the list under
+   it prints warnings too. Fix only
    error-severity findings, then re-run step 4 and validate again; stop
    re-validating once every remaining finding is a warning or the placeholder
    pair below. `read but never assigned` is a defect no error covers: nothing
@@ -500,10 +505,6 @@ and honestly surfaced to the user as gaps when asked.
 3. **Structural BPMN is authored, not invented.** Follow the spec/canvas
    contract in [references/structural-bpmn.md](references/structural-bpmn.md);
    flag honestly what the registry does not expose.
-   BPMN XML element names are case-sensitive: use exact lower-camel tags such
-   as `<bpmn:startEvent>`, `<bpmn:intermediateCatchEvent>`,
-   `<bpmn:scriptTask>`, and `<bpmn:endEvent>`. Do not write PascalCase tags
-   like `<bpmn:IntermediateCatchEvent>`.
 4. **One clarifying round, then author.** Ask (AskUserQuestion) only for a
    choice that the request and the CLI evidence leave undecidable and whose
    wrong answer is unrecoverable or forces an invented identifier; batch those
