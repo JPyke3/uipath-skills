@@ -38,10 +38,26 @@ JSON, reconstruct source, compile once to compare the emitted baseline, and
 then make the requested edit. Those are before/after judgments no final
 artifact can establish.
 
+## Installing the package
+
+Skip this when the SDK is already installed: `npm ls -g @uipath/maestro-builder-sdk` lists it, or a prepared workspace has `node_modules/@uipath/maestro-builder-sdk` (a workspace copy is used before a global one).
+Every `uip maestro flow` authoring verb — `check`, `compile`, `decompile` — runs from the installed package, so all of them refuse until it is installed; the package cannot bootstrap itself.
+Install it once per machine, globally, so the workspace needs no `package.json` or `node_modules/`:
+
+```bash
+npm install -g @uipath/maestro-builder-sdk
+```
+
+The package is public on npmjs.com, so this needs no token and follows whatever registry or mirror the machine's npm config names.
+Only if it fails with E401 or E404 **and** `npm config get @uipath:registry` names GitHub Packages, retry once with `--@uipath:registry=https://registry.npmjs.org` appended.
+If it fails with EACCES (npm's global folder is not writable), do not use `sudo`; install into the workspace instead with `npm install --save-dev @uipath/maestro-builder-sdk`, which `uip` also finds.
+Any other failure (a timeout, a mirror refusing the package) is the user's network or registry to fix, so report it rather than routing around it.
+When `uip` reports the SDK is below its minimum version, run the command its `Instructions` give: it names `-g` or `--save-dev` depending on which copy it found.
+
 ## Local authoring hard gates
 
 Use this section only when emit-only mode is disabled. Use the source check as
-the fast no-output inner loop (with a library and a `bindings.json` beside the
+the fast no-output inner loop (with a library and `.flow-sdk/bindings.json` beside the
 source it reports every connector-input and binding refusal `compile` would
 raise), compile to emit, then run the product's static check on the artifact.
 There is no compiled-artifact `check`; `validate` is that rung.
@@ -50,11 +66,11 @@ The full sequence, in order — `registry prepare` appears only where `check`
 names it, never before the source exists:
 
 ```bash
-uip maestro flow check <Name>.flow.ts --source
+uip maestro flow check .flow-sdk/<Name>.flow.ts --source
 # run each prepare the check names, with the exact command it prints:
 uip maestro registry prepare <key> <action> [--object <name>] [--resolve <field>:<by>=<value>] [-f <parent>=<value>]
-uip maestro flow check <Name>.flow.ts --source    # re-check until clean
-uip maestro flow compile <Name> -o <Name>.flow
+uip maestro flow check .flow-sdk/<Name>.flow.ts --source    # re-check until clean
+uip maestro flow compile .flow-sdk/<Name>.flow.ts -o <Name>.flow
 uip maestro flow validate <Name>.flow --output json
 ```
 
@@ -72,13 +88,13 @@ These authoring verbs require a prerelease of `@uipath/cli` that exposes them.
 ## Product-CLI scaffold
 
 Product debug needs a solution containing a Flow project. Keep the authored
-source at the workspace root beside `node_modules/`, and create the nested
-scaffold once:
+source in `.flow-sdk/` under the workspace root, outside the solution, and
+create the nested scaffold once:
 
 ```bash
 uip solution init <Solution>
 ( cd <Solution> && uip maestro flow init <Name> )
-uip maestro flow decompile <Solution>/<Name>/<Name>.flow -o <Name>.flow.ts --no-pipeline
+uip maestro flow decompile <Solution>/<Name>/<Name>.flow -o .flow-sdk/<Name>.flow.ts --no-pipeline
 ```
 
 That third command seeds the authored source from the stub `flow init` just wrote, so the flow's id and name come from the product instead of being invented, and the stub is overwritten in place by the first `compile -o`.
@@ -88,7 +104,7 @@ For a **Maestro Automate** project (the request names that product, not just the
 `<Solution>` and `<Name>` are the request's own names, used verbatim: a request
 that gives one name for both ("inside a solution of the same name") uses it for
 both, and a request that names only the Flow uses `<Name>` for both. The result
-has three related names: `<Name>.flow.ts`, the `<Name>` project directory, and
+has three related names: `.flow-sdk/<Name>.flow.ts`, the `<Name>` project directory, and
 `<Name>.flow` inside that project. Keep them aligned for this scaffold so each
 command addresses the intended project; `compile -o` remains the authority over
 where the emitted file is written.
@@ -109,7 +125,7 @@ refresh and debug only when the stated acceptance bar requires product-runtime
 behavior evidence:
 
 ```bash
-uip maestro flow compile <Name>.flow.ts -o <Solution>/<Name>/<Name>.flow
+uip maestro flow compile .flow-sdk/<Name>.flow.ts -o <Solution>/<Name>/<Name>.flow
 uip maestro flow validate <Solution>/<Name>/<Name>.flow --output json
 # Before anything opens the emitted file — upload, debug, or a designer:
 uip maestro flow format <Solution>/<Name>/<Name>.flow --output json
