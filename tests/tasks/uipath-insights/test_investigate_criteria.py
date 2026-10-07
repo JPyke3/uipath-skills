@@ -306,10 +306,10 @@ NARROW_TASKS = {
     },
 }
 
-# Tasks in this tree that grade the alerts, dashboards, machines, queues, RBAC,
-# filter-discovery and export command families. The jobs playbook does not run
-# those reads, so the routing question does not arise for them. The pattern,
-# count and advisory guards below still cover them.
+# Tasks in this tree that grade the alerts, dashboards, export, looker,
+# machines, queues, RBAC and filter-discovery command families. The jobs
+# playbook does not run those reads, so the routing question does not arise
+# for them. The pattern, count and advisory guards below still cover them.
 OTHER_TASKS = (
     "alerts/absolute_window_triage_smoke.yaml",
     "alerts/filtered_history_smoke.yaml",
@@ -322,6 +322,13 @@ OTHER_TASKS = (
     "dashboards/update_smoke.yaml",
     "export/verify_smoke.yaml",
     "filters/smoke.yaml",
+    "looker/ambiguous-title/smoke.yaml",
+    "looker/embed-by-title/smoke.yaml",
+    "looker/embed_url_smoke.yaml",
+    "looker/looker-unavailable/smoke.yaml",
+    "looker/no-dashboards/smoke.yaml",
+    "looker/paging/smoke.yaml",
+    "looker/unreachable-id/smoke.yaml",
     "machines/smoke.yaml",
     "queues/smoke.yaml",
     "rbac/drilldown_smoke.yaml",
@@ -348,6 +355,13 @@ EXPECTED_COMMAND_CRITERIA = {
     "filters/smoke.yaml": 6,
     "job-health/job_health_investigation_e2e.yaml": 5,
     "job-health/period_comparison_smoke.yaml": 6,
+    "looker/ambiguous-title/smoke.yaml": 4,
+    "looker/embed-by-title/smoke.yaml": 5,
+    "looker/embed_url_smoke.yaml": 7,
+    "looker/looker-unavailable/smoke.yaml": 5,
+    "looker/no-dashboards/smoke.yaml": 4,
+    "looker/paging/smoke.yaml": 3,
+    "looker/unreachable-id/smoke.yaml": 5,
     "machines/smoke.yaml": 12,
     "queues/smoke.yaml": 17,
     "rbac/drilldown_smoke.yaml": 11,
