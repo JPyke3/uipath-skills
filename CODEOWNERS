@@ -164,6 +164,8 @@
 /skills/uipath-maestro-flow/references/event-trigger.md @chandusailella @UiPath/maestro-cli-team
 /skills/uipath-maestro-flow/references/agent.md @UiPath/team-coded-agents @AlexandruCGhimisi @andreibalas-uipath @al3xanndru @UiPath/maestro-cli-team
 /skills/uipath-maestro-flow/references/inline-agent.md @AlexandruCGhimisi @andreibalas-uipath @al3xanndru @UiPath/maestro-cli-team
+# Inline-agent Flow tasks: Flow authoring prompts, agents-team resource.json contract.
+/tests/tasks/uipath-maestro-flow/inline_agent/ @UiPath/team-coded-agents @AlexandruCGhimisi @andreibalas-uipath @al3xanndru @andreitava-uip @UiPath/maestro-cli-team
 /skills/uipath-maestro-flow/references/data-fabric.md @UiPath/DatafabricCodingAgent @UiPath/maestro-cli-team
 /tests/tasks/uipath-maestro-flow/connector_features/ @chandusailella @mukundbayyaram @UiPath/maestro-cli-team
 /tests/tasks/uipath-maestro-flow/connector_features/datafabric_connector @UiPath/DatafabricCodingAgent @UiPath/maestro-cli-team
